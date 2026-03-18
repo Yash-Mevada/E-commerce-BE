@@ -1,134 +1,141 @@
 import type { Request, Response } from "express"
 import bcrypt from "bcrypt"
 import jwt from "jsonwebtoken"
-import type { Optional } from "sequelize";
 import User, { type UserCreateAttributes } from "../../model/user.model.js";
 import admin from "../../config/firebaseConfig/firebaseAdmin.js";
+import { sendForgotPasswordEmail } from "../../utils/sendEmail.js";
+import { sendResponse } from "../../utils/responseHandler.js";
 
 
-
+export interface UserRequest extends Request {
+  user: User | any
+}
 
 class AuthController {
-
-
-
   // create user controller
   public async createUserController(
     req: Request,
     res: Response
   ) {
 
+    const { first_name, last_name, email, password, phone_number, role } = req.body
+    // debugger
+    this.validateUser(first_name, last_name, email)
+    await this.checkIfUserExists(email)
+    const hasedPassword = await this.hasedPassword(password)
+    const user = await this.createUserInDB({
+      first_name,
+      last_name,
+      email,
+      password: hasedPassword,
+      phone_number,
+      role
 
-    try {
-      const { first_name, last_name, email, password, phone_number, role } = req.body
-      // debugger
-      this.validateUser(first_name, last_name, email)
+    })
 
-
-      await this.checkIfUserExists(email)
-
-      const hasedPassword = await this.hasedPassword(password)
-
-      const user = await this.createUserInDB({
-        first_name,
-        last_name,
-        email,
-        password: hasedPassword,
-        phone_number,
-        role
-
-      })
-
-      return res.status(201).json({
-        success: true,
-        message: "User created successfully",
-        data: this.removedPassword(user)
-      })
-    } catch (error: unknown) {
-
-      const message = error instanceof Error ? error.message : "Error while creating User"
-
-      return res.status(400).json({
-        success: false,
-        message: message
-      })
-    }
+    return sendResponse(res, 201, true, "User created successfully", this.removedPasswordAndRefeshToken(user))
   }
 
 
   public async loginUserController(req: Request, res: Response) {
-    try {
-      // debugger
-      const { email, password, fcm_token } = req.body
+
+    // debugger
+    const { email, password, fcm_token } = req.body
 
 
-      if (!email || !password) {
-        return res.status(400).json({
-          success: false,
-          message: "Email and password are required"
-        })
+    if (!email || !password) {
+      return sendResponse(res, 400, false, "Email and password are required", null)
+    }
+
+    const user = await User.findOne({
+      where: {
+        email
       }
+    })
 
-      const user = await User.findOne({
-        where: {
-          email
-        }
-      })
+    if (!user) {
+      return sendResponse(res, 401, false, "User not found", null)
+    }
+    const isPasswordMatched = await this.comparePassword(password, user.password)
 
-      if (!user) {
-        return res.status(400).json({
-          success: false,
-          message: "User not found"
-        })
-      }
-      const isPasswordMatched = await this.comparePassword(password, user.password)
+    if (!isPasswordMatched) {
+      return sendResponse(res, 401, false, "Invalid credentials", null)
+    }
 
-      if (!isPasswordMatched) {
-        return res.status(400).json({
-          success: false,
-          message: "Invalid credentials"
-        })
-      }
+    const refresh_token = await this.generateToken(user, "7d")
+    const access_token = await this.generateToken(user, "1h")
 
-      const token = await this.generateToken(user)
-
-      if (token) {
-        user.refresh_token = token
-        await user.save()
-      }
+    if (refresh_token) {
+      user.refresh_token = refresh_token
+      user.access_token = access_token
+      await user.save()
+    }
 
 
-      if (fcm_token) {
-        user.fcm_token = fcm_token
-        await user.save()
-      }
-      // await this.sendNotificationController(user.fcm_token)
+    if (fcm_token) {
+      user.fcm_token = fcm_token
+      await user.save()
+    }
+    // await this.sendNotificationController(user.fcm_token)
 
-      return res.status(200).cookie("token", token, {
+
+    return sendResponse(res, 200, true, `Welcome back ${user.first_name}`, this.removedPasswordAndRefeshToken(user), {
+      name: "token",
+      value: refresh_token,
+      options: {
         secure: true,
         httpOnly: true,
         maxAge: 15 * 60 * 60 * 1000,
         sameSite: "strict"
-      }).json({
-        success: true,
-        message: `Welcome back ${user.first_name}`,
-        data: this.removedPassword(user)
-      })
-
-
-
-    } catch (error) {
-
-      const message = error instanceof Error ? error.message : "Error while logging in"
-
-      return res.status(400).json({
-        success: false,
-        message: message
-      })
-    }
-
+      }
+    })
   }
 
+
+
+  public async forgotpassword(req: any, res: Response) {
+
+    const { email } = req.body
+
+    if (!email) {
+      return sendResponse(res, 400, false, "Email is required", null)
+    }
+
+    const isEmailExist = req.user.email === email
+
+    if (!isEmailExist) {
+      return sendResponse(res, 404, false, "Email is not exist", null)
+    }
+
+    const resetToken = await this.generateToken(req.user, "10m")
+
+    const resetLink = `${process.env.FRONTEND_URL}/reset-password?token=${resetToken}`
+
+    await sendForgotPasswordEmail(email, resetLink)
+
+    return sendResponse(res, 200, true, "Reset password link sent successfully", null)
+  }
+
+
+  public async resetPassword(req: any, res: Response) {
+
+    const { token, newPassword } = req.body
+    if (!token || !newPassword) {
+      return sendResponse(res, 400, false, "Token and new password are required", null)
+    }
+    const decoded: any = await jwt.verify(token, process.env.JWT_SECRET!)
+
+    const user: any = await User.findByPk(decoded.id)
+
+    console.log("users", user)
+    if (!user) {
+      return sendResponse(res, 404, false, "User not found", null)
+    }
+    user.password = await bcrypt.hash(newPassword, 10)
+    await user.save()
+
+    return sendResponse(res, 200, true, "Password updated successfully", null)
+  }
 
   public async sendNotificationController(fcm_token: string) {
     if (!fcm_token) {
@@ -155,15 +162,13 @@ class AuthController {
   }
 
 
-  private async generateToken(user: User) {
+  private async generateToken(user: User, time: any = "1h") {
     return jwt.sign({
       id: user.id,
       email: user.email,
       role: user.role
-    }, process.env.JWT_SECRET!, { expiresIn: "1h" })
+    }, process.env.JWT_SECRET!, { expiresIn: time })
   }
-
-
 
   // validate user
   private validateUser(first_name: string, last_name: string, email: string) {
@@ -200,56 +205,41 @@ class AuthController {
   }
 
   // removed password key from user response
-  private removedPassword(user: any) {
+  private removedPasswordAndRefeshToken(user: any) {
     const userData = user.toJSON()
     delete userData.password
+    delete userData.refresh_token
     return userData
   }
 
-
-
   public async isAuthUser(req: any, res: Response, next: any) {
-    try {
-      const token = req?.cookies?.token || req?.headers?.authorization?.split(" ")[1]
 
-      if (!token) {
-        return res.status(401).json({
-          success: false,
-          message: "User have no token",
-        })
-      }
-      const decordToken: any = jwt.verify(token, process.env.JWT_SECRET!);
+    const token = req?.cookies?.token || req?.headers?.authorization?.split(" ")[1]
 
-
-
-      if (!decordToken) {
-        return res.status(401).json({
-          success: false,
-          message: "User is not authenticated",
-        })
-      }
-
-      const userData = await User.findByPk(decordToken?.id, {
-        attributes: ["id", "first_name", "last_name", "email", "phone_number", "role", "created_at", "updated_at"],
-      })
-
-      if (!userData) {
-        return res.status(404).json({
-          success: false,
-          message: "User not found"
-        })
-      }
-
-
-      req.user = userData
-      // req.role = decordToken.role
-      next()
-    } catch (error) {
-      return res.status(400).json({
-        success: false,
-        message: "Error while checking authentication"
-      })
+    if (!token) {
+      return sendResponse(res, 400, false, "User have no token", null)
     }
+    const decordToken: any = jwt.verify(token, process.env.JWT_SECRET!);
+
+
+
+    if (!decordToken) {
+      return sendResponse(res, 401, false, "User is not authenticated", null)
+    }
+
+    const userData = await User.findByPk(decordToken?.id, {
+      attributes: ["id", "first_name", "last_name", "email", "phone_number", "role", "created_at", "updated_at"],
+    })
+
+    if (!userData) {
+      return sendResponse(res, 404, false, "User not found", null)
+    }
+
+
+    req.user = userData
+    // req.role = decordToken.role
+    next()
+
   }
 
 }

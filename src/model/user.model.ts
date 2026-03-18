@@ -26,7 +26,8 @@ export interface UserCreateAttributes extends Optional<UserAttributes, "id" | "c
 @Table({
   tableName: "users",
   timestamps: true,
-  underscored: true
+  underscored: true,
+  // paranoid: true // used for soft delete
 })
 export default class User extends Model<UserAttributes, UserCreateAttributes> {
 
@@ -65,6 +66,9 @@ export default class User extends Model<UserAttributes, UserCreateAttributes> {
 
   @Column(DataType.TEXT)
   fcm_token!: string
+
+  @Column(DataType.TEXT)
+  access_token!: string
 
 }
 
