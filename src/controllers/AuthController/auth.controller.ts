@@ -212,36 +212,6 @@ class AuthController {
     return userData
   }
 
-  public async isAuthUser(req: any, res: Response, next: any) {
-
-    const token = req?.cookies?.token || req?.headers?.authorization?.split(" ")[1]
-
-    if (!token) {
-      return sendResponse(res, 400, false, "User have no token", null)
-    }
-    const decordToken: any = jwt.verify(token, process.env.JWT_SECRET!);
-
-
-
-    if (!decordToken) {
-      return sendResponse(res, 401, false, "User is not authenticated", null)
-    }
-
-    const userData = await User.findByPk(decordToken?.id, {
-      attributes: ["id", "first_name", "last_name", "email", "phone_number", "role", "created_at", "updated_at"],
-    })
-
-    if (!userData) {
-      return sendResponse(res, 404, false, "User not found", null)
-    }
-
-
-    req.user = userData
-    // req.role = decordToken.role
-    next()
-
-  }
-
 }
 
 export default new AuthController()
