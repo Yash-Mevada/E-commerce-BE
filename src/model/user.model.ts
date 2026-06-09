@@ -4,7 +4,12 @@
 
 
 import type { Optional } from "sequelize";
-import { AllowNull, Column, DataType, Default, Model, PrimaryKey, Table } from "sequelize-typescript";
+import { AllowNull, Column, DataType, Default, HasOne, Model, PrimaryKey, Table } from "sequelize-typescript";
+import AddressClass from "./address.model.js";
+import CardClass from "./card.model.js";
+
+interface Address extends AddressClass {}
+interface Card extends CardClass {}
 
 
 
@@ -69,6 +74,13 @@ export default class User extends Model<UserAttributes, UserCreateAttributes> {
 
   @Column(DataType.TEXT)
   access_token!: string
+
+
+  @HasOne(() => AddressClass)
+  address!: Address
+
+  @HasOne(() => CardClass)
+  card!: Card
 
 }
 
