@@ -3,6 +3,7 @@ import Category from "../../model/category.model.js"
 import { asynWrapper } from "../../utils/asyncWrapper.js"
 import { sendResponse } from "../../utils/responseHandler.js"
 import Product from "../../model/product.model.js"
+import { Op } from "sequelize"
 
 export interface CategoryRequest extends Request {
   category: Category | any
@@ -27,16 +28,65 @@ class CategoryController {
 
   public getAllCategories = asynWrapper(async (req: Request, res: Response) => {
 
+    const { filter, pagination, sort } = req.body
+    const page = Number(pagination?.page) || 1;
+    const limit = Number(pagination?.limit) || 10;
+    const offset = (page - 1) * limit;
+    let order: any = []
 
-    const categories = await Category.findAll({
-      attributes: ["id", "name", "description", "created_at", "updated_at"],
-      include: [
-        {
-          model: Product
-        }
-      ]
-    })
-    return sendResponse(res, 200, true, "All categories fetched successfully", categories)
+    let whereConditions = {}
+    if (filter && filter?.search && filter?.keyword) {
+      whereConditions =
+      {
+        [Op.or]: filter?.search && filter.search?.map((field: string) => {
+          return {
+            [field]: {
+              [Op.iLike]: `%${filter.keyword}%`
+            }
+          }
+        })
+      }
+    }
+    // SORTING
+    if (sort && Object.keys(sort).length > 0) {
+
+      const validColumns = Object.keys(Category.getAttributes());
+
+      const [sortKey, sortValue]: any = Object.entries(sort)[0];
+      if (
+        validColumns.includes(sortKey) &&
+        ["ASC", "DESC"].includes(String(sortValue).toUpperCase())
+      ) {
+        order = [[sortKey, String(sortValue).toUpperCase()]];
+      }
+    }
+    // const categories = await Category.findAll({
+    //   attributes: ["id", "name", "description", "created_at", "updated_at"],
+    //   include: [
+    //     {
+    //       model: Product
+    //     }
+    //   ]
+    // })
+
+
+    const { count, rows } = await Category.findAndCountAll(
+      {
+        where: whereConditions,
+        attributes: ["id", "name", "description", "created_at", "updated_at"],
+        include: [
+          {
+            model: Product
+          }
+        ],
+        limit: pagination?.limit ? pagination?.limit : undefined,
+        offset: pagination?.page ? offset : 0,
+        order: order
+
+      }
+    )
+    // return sendResponse(res, 200, true, "All categories fetched successfully", categories)
+    return sendResponse(res, 200, true, "All categories fetched successfully", rows, null, count)
   })
 
 

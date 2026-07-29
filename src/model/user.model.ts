@@ -8,13 +8,14 @@ import { AllowNull, Column, DataType, Default, HasOne, Model, PrimaryKey, Table 
 import AddressClass from "./address.model.js";
 import CardClass from "./card.model.js";
 
-interface Address extends AddressClass {}
-interface Card extends CardClass {}
+interface Address extends AddressClass { }
+interface Card extends CardClass { }
 
 
 
 export interface UserAttributes {
   id: string;
+  cognito_sub: string;
   first_name: string;
   last_name: string;
   email: string;
@@ -40,6 +41,10 @@ export default class User extends Model<UserAttributes, UserCreateAttributes> {
   @Default(DataType.UUIDV4)
   @Column(DataType.UUID)
   id!: string
+
+  @AllowNull(false)
+  @Column(DataType.STRING)
+  cognito_sub!: string  // sub from cognito
 
   @AllowNull(false)
   @Column(DataType.STRING)

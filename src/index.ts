@@ -21,6 +21,7 @@ app.use(cors({
   origin: "*"
 }))
 app.use(bodyParser.json())
+app.use("/uploads", express.static("uploads"))
 
 connectDB()
 

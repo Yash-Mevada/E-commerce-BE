@@ -2,7 +2,7 @@ import type { Optional } from "sequelize";
 import { PrimaryKey, Table, Default, Column, AllowNull, Model, DataType, HasMany } from "sequelize-typescript";
 import ProductClass from "./product.model.js";
 
-interface Product extends ProductClass {}
+interface Product extends ProductClass { }
 
 
 export interface categoryAttributes {

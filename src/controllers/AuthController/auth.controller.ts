@@ -5,6 +5,7 @@ import User, { type UserCreateAttributes } from "../../model/user.model.js";
 import admin from "../../config/firebaseConfig/firebaseAdmin.js";
 import { sendForgotPasswordEmail } from "../../utils/sendEmail.js";
 import { sendResponse } from "../../utils/responseHandler.js";
+import { CognitoServices } from "../../services/cognito.services.js";
 
 
 export interface UserRequest extends Request {
@@ -23,17 +24,32 @@ class AuthController {
     this.validateUser(first_name, last_name, email)
     await this.checkIfUserExists(email)
     const hasedPassword = await this.hasedPassword(password)
-    const user = await this.createUserInDB({
-      first_name,
-      last_name,
-      email,
-      password: hasedPassword,
-      phone_number,
-      role
 
+
+    const cognitoUser = await CognitoServices.createUser({
+      email, password, phone_number, first_name, last_name
     })
 
-    return sendResponse(res, 201, true, "User created successfully", this.removedPasswordAndRefeshToken(user))
+    try {
+      const user = await this.createUserInDB({
+        cognito_sub: cognitoUser.cognitoSub,
+        first_name,
+        last_name,
+        email,
+        password: hasedPassword,
+        phone_number,
+        role
+      })
+
+      return sendResponse(res, 201, true, "User created successfully", this.removedPasswordAndRefeshToken(user))
+    } catch (error) {
+      try {
+        await CognitoServices.deleteUser(email)
+      } catch (rollbackError) {
+        console.error("Failed to delete Cognito user during rollback:", rollbackError)
+      }
+      throw error
+    }
   }
 
 
@@ -56,36 +72,79 @@ class AuthController {
     if (!user) {
       return sendResponse(res, 401, false, "User not found", null)
     }
-    const isPasswordMatched = await this.comparePassword(password, user.password)
+    // 1. If legacy user, authenticate locally first, then JIT migrate them to Cognito
+    if (!user.cognito_sub || user.cognito_sub === "temp-cognito-sub") {
+      const isPasswordMatched = await this.comparePassword(password, user.password)
+      if (!isPasswordMatched) {
+        return sendResponse(res, 401, false, "Invalid credentials", null)
+      }
 
-    if (!isPasswordMatched) {
-      return sendResponse(res, 401, false, "Invalid credentials", null)
+      try {
+        console.log(`JIT migrating user ${email} to Cognito...`)
+        const cognitoUser = await CognitoServices.createUser({
+          email,
+          password, // use the plain text password they just entered!
+          phone_number: user.phone_number || "+10000000000",
+          first_name: user.first_name,
+          last_name: user.last_name
+        })
+        user.cognito_sub = cognitoUser.cognitoSub
+        await user.save()
+        console.log(`✅ JIT migrated user ${email} successfully. Sub: ${cognitoUser.cognitoSub}`)
+      } catch (migrationError) {
+        console.error(`Failed JIT migration for user ${email}:`, migrationError)
+        return sendResponse(res, 500, false, "Failed to sync account credentials with auth service", null)
+      }
     }
 
-    const refresh_token = await this.generateToken(user, "7d")
-    const access_token = await this.generateToken(user, "1h")
+    // 2. Authenticate the user directly via Cognito (handles validation for all users)
+    let refresh_token: string | undefined
+    let access_token: string | undefined
+    let id_token: string | undefined
+    let expires_in: number | undefined
 
+    try {
+      console.log(`Authenticating user ${email} via Cognito...`)
+      const authResult = await CognitoServices.loginUser({ email, password })
+      if (!authResult) {
+        return sendResponse(res, 401, false, "Invalid credentials", null)
+      }
+
+      refresh_token = authResult.RefreshToken
+      access_token = authResult.AccessToken
+      id_token = authResult.IdToken
+      expires_in = authResult.ExpiresIn
+    } catch (cognitoError: any) {
+      console.error("Cognito login error:", cognitoError)
+      if (cognitoError.name === "NotAuthorizedException" || cognitoError.name === "UserNotFoundException") {
+        return sendResponse(res, 401, false, "Invalid credentials", null)
+      }
+      return sendResponse(res, 500, false, "Authentication failed", null)
+    }
+
+    // 3. Update database tokens and FCM token as needed
     if (refresh_token) {
       user.refresh_token = refresh_token
-      user.access_token = access_token
+      user.access_token = access_token || ""
       await user.save()
     }
-
 
     if (fcm_token) {
       user.fcm_token = fcm_token
       await user.save()
     }
-    // await this.sendNotificationController(user.fcm_token)
 
-
-    return sendResponse(res, 200, true, `Welcome back ${user.first_name}`, this.removedPasswordAndRefeshToken(user), {
+    return sendResponse(res, 200, true, `Welcome back ${user.first_name}`, {
+      ...this.removedPasswordAndRefeshToken(user),
+      access_token,
+      id_token
+    }, {
       name: "token",
-      value: refresh_token,
+      value: refresh_token || "",
       options: {
         secure: true,
         httpOnly: true,
-        maxAge: 15 * 60 * 60 * 1000,
+        maxAge: (expires_in || 3600) * 1000,
         sameSite: "strict"
       }
     })

@@ -6,7 +6,7 @@ import { categoryController } from "../controllers/CategoryController/category.c
 const router = Router()
 
 router.post("/create", categoryController.createCategory)
-router.get("/all", categoryController.getAllCategories)
+router.post("/all", categoryController.getAllCategories)
 router.get("/:id", categoryController.getCategoryById)
 router.put("/update/:id", categoryController.updateCategory)
 router.delete("/delete/:id", categoryController.deleteCategory)

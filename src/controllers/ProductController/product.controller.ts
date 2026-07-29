@@ -3,8 +3,12 @@ import Product from "../../model/product.model.js"
 import { sendResponse } from "../../utils/responseHandler.js"
 import Category from "../../model/category.model.js"
 import { asynWrapper } from "../../utils/asyncWrapper.js"
+import { CloudinaryServices } from "../../services/cloudinary.services.js"
+import { LocalUploadServices } from "../../services/local.services.js"
 
 
+
+import { Op } from "sequelize"
 
 export interface productRequest extends Request {
   product: Product | any
@@ -33,16 +37,51 @@ class ProductController {
   })
 
   public getAllProducts = asynWrapper(async (req: Request, res: Response) => {
+    const { filter, pagination, sort } = req.body
+    const page = Number(pagination?.page) || 1;
+    const limit = Number(pagination?.limit) || 10;
+    const offset = (page - 1) * limit;
+    let order: any = []
 
-    const products = await Product.findAll({
-      attributes: ["id", "name", "description", "price", "stock", "image", "created_at", "updated_at"],
+    let whereConditions = {}
+    if (filter && filter?.search && filter?.keyword) {
+      whereConditions = {
+        [Op.or]: filter?.search && filter.search?.map((field: string) => {
+          return {
+            [field]: {
+              [Op.iLike]: `%${filter.keyword}%`
+            }
+          }
+        })
+      }
+    }
+
+    // SORTING
+    if (sort && Object.keys(sort).length > 0) {
+      const validColumns = Object.keys(Product.getAttributes());
+      const [sortKey, sortValue]: any = Object.entries(sort)[0];
+      if (
+        validColumns.includes(sortKey) &&
+        ["ASC", "DESC"].includes(String(sortValue).toUpperCase())
+      ) {
+        order = [[sortKey, String(sortValue).toUpperCase()]];
+      }
+    }
+
+    const { count, rows } = await Product.findAndCountAll({
+      where: whereConditions,
+      attributes: ["id", "name", "description", "price", "stock", "category_id", "image", "created_at", "updated_at"],
       include: [
         {
           model: Category
         }
-      ]
+      ],
+      limit: pagination?.limit ? pagination?.limit : undefined,
+      offset: pagination?.page ? offset : 0,
+      order: order
     })
-    return sendResponse(res, 200, true, "All products fetched successfully", products)
+
+    return sendResponse(res, 200, true, "All products fetched successfully", rows, null, count)
   })
 
 
@@ -50,7 +89,7 @@ class ProductController {
     const id = req.params.id as string
 
     const product = await Product.findByPk(id, {
-      attributes: ["id", "name", "description", "price", "stock", "image", "created_at", "updated_at"],
+      attributes: ["id", "name", "description", "price", "stock", "category_id", "image", "created_at", "updated_at"],
       include: [
         {
           model: Category
@@ -110,9 +149,25 @@ class ProductController {
     return sendResponse(res, 200, true, "Product deleted successfully", null)
   })
 
+  public uploadProductImage = asynWrapper(async (req: Request, res: Response) => {
+    const file = req.file
+    if (!file) {
+      return sendResponse(res, 400, false, "No image file provided", null)
+    }
 
-
-
+    try {
+      let imageUrl: string
+      if (process.env.UPLOAD_PROVIDER === "cloudinary") {
+        imageUrl = await CloudinaryServices.uploadImageBuffer(file.buffer)
+      } else {
+        imageUrl = await LocalUploadServices.uploadImageBuffer(file)
+      }
+      return sendResponse(res, 200, true, "Image uploaded successfully", { imageUrl })
+    } catch (error: any) {
+      console.error("Upload error:", error)
+      return sendResponse(res, 500, false, error.message || "Failed to upload image", null)
+    }
+  })
 }
 
 
