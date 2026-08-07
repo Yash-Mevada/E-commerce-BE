@@ -52,7 +52,12 @@ function verifyWithKey(token: string, jwk: any): any {
 
 export const authMiddleware = async (req: any, res: any, next: any) => {
   // Bypass auth for public routes (registration & login)
-  const publicPaths = ["/api/users/create", "/api/users/login"]
+  const publicPaths = [
+    "/api/users/create", 
+    "/api/users/login",
+    "/api/customers/register",
+    "/api/customers/login"
+  ]
   if (publicPaths.includes(req.path)) {
     return next()
   }

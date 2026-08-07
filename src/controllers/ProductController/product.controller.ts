@@ -37,13 +37,13 @@ class ProductController {
   })
 
   public getAllProducts = asynWrapper(async (req: Request, res: Response) => {
-    const { filter, pagination, sort } = req.body
+    const { filter, pagination, sort, filterByCategory, filterByDate } = req.body
     const page = Number(pagination?.page) || 1;
     const limit = Number(pagination?.limit) || 10;
     const offset = (page - 1) * limit;
     let order: any = []
 
-    let whereConditions = {}
+    let whereConditions: any = {}
     if (filter && filter?.search && filter?.keyword) {
       whereConditions = {
         [Op.or]: filter?.search && filter.search?.map((field: string) => {
@@ -53,6 +53,32 @@ class ProductController {
             }
           }
         })
+      }
+    }
+
+    if (filterByCategory) {
+      whereConditions.category_id = filterByCategory
+    }
+
+    if (filterByDate) {
+      const { startDate, endDate } = filterByDate
+      if (startDate && endDate) {
+        // Set endDate to end of day to include all events on that day
+        const end = new Date(endDate)
+        end.setHours(23, 59, 59, 999)
+        whereConditions.created_at = {
+          [Op.between]: [new Date(startDate), end]
+        }
+      } else if (startDate) {
+        whereConditions.created_at = {
+          [Op.gte]: new Date(startDate)
+        }
+      } else if (endDate) {
+        const end = new Date(endDate)
+        end.setHours(23, 59, 59, 999)
+        whereConditions.created_at = {
+          [Op.lte]: end
+        }
       }
     }
 

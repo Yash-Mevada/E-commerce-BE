@@ -10,6 +10,7 @@ import { fileURLToPath } from "url"
 import { Umzug, SequelizeStorage } from "umzug"
 import Card from "../model/card.model.js"
 import CartItem from "../model/cartItem.model.js"
+import Customer from "../model/customer.model.js"
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
@@ -24,7 +25,7 @@ export const sequelize = new Sequelize(process.env.DATABASE_URL!, {
       rejectUnauthorized: false
     }
   },
-  models: [User, Category, Product, Address, Card, CartItem]
+  models: [User, Category, Product, Address, Card, CartItem, Customer]
 })
 
 export const connectDB = async () => {

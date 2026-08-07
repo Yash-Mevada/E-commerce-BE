@@ -3,24 +3,15 @@
 import crypto from "crypto"
 import { AdminCreateUserCommand, AdminDeleteUserCommand, AdminSetUserPasswordCommand, CognitoIdentityProviderClient, InitiateAuthCommand } from "@aws-sdk/client-cognito-identity-provider";
 
-
-
 const cognitoClient = new CognitoIdentityProviderClient({
   region: process.env.AWS_REGION as string
 })
 
-
-
-
-
 export class CognitoServices {
 
-
-  static async createUser(data: any) {
-
-
+  static async createUser(data: any, userPoolId: string = process.env.COGNITO_USER_POOL_ID!) {
     const command = new AdminCreateUserCommand({
-      UserPoolId: process.env.COGNITO_USER_POOL_ID,
+      UserPoolId: userPoolId,
       Username: data.email,
       TemporaryPassword: data.password,
       MessageAction: "SUPPRESS",
@@ -44,29 +35,21 @@ export class CognitoServices {
         {
           Name: "family_name",
           Value: data.last_name
-
         }
       ]
-
     })
-
-
 
     const response = await cognitoClient.send(command)
 
-
-
     // Make password permanent
-
     await cognitoClient.send(
       new AdminSetUserPasswordCommand({
-        UserPoolId: process.env.COGNITO_USER_POOL_ID,
+        UserPoolId: userPoolId,
         Username: data.email,
         Password: data.password,
         Permanent: true
       })
     )
-
 
     const sub = response.User?.Attributes?.find((attr: any) => attr.Name === "sub")?.Value
 
@@ -78,29 +61,26 @@ export class CognitoServices {
       cognitoSub: sub,
       username: response?.User?.Username,
     }
-
   }
 
-  static async deleteUser(email: string) {
+  static async deleteUser(email: string, userPoolId: string = process.env.COGNITO_USER_POOL_ID!) {
     const command = new AdminDeleteUserCommand({
-      UserPoolId: process.env.COGNITO_USER_POOL_ID,
+      UserPoolId: userPoolId,
       Username: email,
     })
     await cognitoClient.send(command)
   }
 
-  static async loginUser(data: any) {
-    const clientId = process.env.COGNITO_CLIENT_ID!
-    const clientSecret = process.env.COGNITO_CLIENT_SECRET
-    
+  static async loginUser(data: any, clientId: string = process.env.COGNITO_CLIENT_ID!, clientSecret?: string) {
+    const activeClientSecret = clientSecret !== undefined ? clientSecret : process.env.COGNITO_CLIENT_SECRET;
     const authParameters: Record<string, string> = {
       USERNAME: data.email,
       PASSWORD: data.password,
     }
     
-    if (clientSecret) {
+    if (activeClientSecret) {
       const secretHash = crypto
-        .createHmac("sha256", clientSecret)
+        .createHmac("sha256", activeClientSecret)
         .update(data.email + clientId)
         .digest("base64")
       authParameters.SECRET_HASH = secretHash
@@ -114,7 +94,5 @@ export class CognitoServices {
     const response = await cognitoClient.send(command)
     return response.AuthenticationResult
   }
-
-
 }
 
