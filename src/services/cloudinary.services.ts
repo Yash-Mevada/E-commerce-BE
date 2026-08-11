@@ -7,7 +7,7 @@ cloudinary.config({
 });
 
 export class CloudinaryServices {
-  static async uploadImageBuffer(fileBuffer: Buffer): Promise<string> {
+  static async uploadImageBuffer(fileBuffer: Buffer): Promise<{ imageUrl: string, publicId: string }> {
     return new Promise((resolve, reject) => {
       const uploadStream = cloudinary.uploader.upload_stream(
         { folder: "products" },
@@ -18,7 +18,10 @@ export class CloudinaryServices {
           if (!result) {
             return reject(new Error("Upload failed, result undefined"));
           }
-          resolve(result.secure_url);
+          resolve({
+            imageUrl: result.secure_url,
+            publicId: result.public_id
+          });
         }
       );
       uploadStream.end(fileBuffer);

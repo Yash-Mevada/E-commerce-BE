@@ -1,9 +1,11 @@
 import type { Optional } from "sequelize";
 import { AllowNull, Column, DataType, Default, Model, PrimaryKey, Table, ForeignKey, BelongsTo, HasMany } from "sequelize-typescript";
 import CategoryClass from "./category.model.js";
-import  CartItem from "./cartItem.model.js";
+import CartItem from "./cartItem.model.js";
+import ProductImageClass from "./productImages.model.js";
 
 interface Category extends CategoryClass { }
+interface ProductImage extends ProductImageClass { }
 
 
 
@@ -68,9 +70,10 @@ export default class Product extends Model<productAttributes, ProductCreateAttri
   @Column(DataType.STRING)
   image!: string
 
-
-
   @HasMany(() => CartItem)
   cartItems!: CartItem[]
+
+  @HasMany(() => ProductImageClass)
+  productImages!: ProductImage[]
 
 }

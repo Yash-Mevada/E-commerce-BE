@@ -1,5 +1,6 @@
 import type { Request, Response } from "express"
 import Product from "../../model/product.model.js"
+import ProductImage from "../../model/productImages.model.js"
 import { sendResponse } from "../../utils/responseHandler.js"
 import Category from "../../model/category.model.js"
 import { asynWrapper } from "../../utils/asyncWrapper.js"
@@ -20,7 +21,7 @@ class ProductController {
 
 
   public createProductController = asynWrapper(async (req: Request, res: Response) => {
-    const { name, description, price, stock, category_id, image } = req.body
+    const { name, description, price, stock, category_id, image, productImages } = req.body
     if (!name || !description || !price || !stock || !category_id || !image) {
       return sendResponse(res, 400, false, "Name, description, price, stock, category_id, image are required", null)
     }
@@ -33,7 +34,25 @@ class ProductController {
       category_id,
       image
     })
-    return sendResponse(res, 201, true, "Product created successfully", product)
+
+    if (productImages && Array.isArray(productImages)) {
+      const imageRecords = productImages.map((img: any) => {
+        const image_url = typeof img === "string" ? img : (img.imageUrl || img.image_url || "")
+        const public_id = typeof img === "string" ? "" : (img.publicId || img.public_id || "")
+        return {
+          product_id: product.id,
+          image_url,
+          public_id
+        }
+      })
+      await ProductImage.bulkCreate(imageRecords)
+    }
+
+    const productWithImages = await Product.findByPk(product.id, {
+      include: [Category, ProductImage]
+    })
+
+    return sendResponse(res, 201, true, "Product created successfully", productWithImages)
   })
 
   public getAllProducts = asynWrapper(async (req: Request, res: Response) => {
@@ -100,6 +119,9 @@ class ProductController {
       include: [
         {
           model: Category
+        },
+        {
+          model: ProductImage
         }
       ],
       limit: pagination?.limit ? pagination?.limit : undefined,
@@ -119,6 +141,9 @@ class ProductController {
       include: [
         {
           model: Category
+        },
+        {
+          model: ProductImage
         }
       ]
     })
@@ -134,11 +159,10 @@ class ProductController {
   public updateProduct = asynWrapper(async (req: Request, res: Response) => {
     const id = req.params.id as string
 
-    const { name, description, price, stock, category_id, image } = req.body
+    const { name, description, price, stock, category_id, image, productImages } = req.body
     if (!name || !description || !price || !stock || !category_id || !image) {
       return sendResponse(res, 400, false, "Name, description, price, stock, category_id, image are required", null)
     }
-
 
     const updateData: {
       name?: string,
@@ -160,6 +184,21 @@ class ProductController {
       return sendResponse(res, 404, false, "Product not found", null)
     }
     await product.update(updateData)
+
+    if (productImages && Array.isArray(productImages)) {
+      await ProductImage.destroy({ where: { product_id: id } })
+      const imageRecords = productImages.map((img: any) => {
+        const image_url = typeof img === "string" ? img : (img.imageUrl || img.image_url || "")
+        const public_id = typeof img === "string" ? "" : (img.publicId || img.public_id || "")
+        return {
+          product_id: id,
+          image_url,
+          public_id
+        }
+      })
+      await ProductImage.bulkCreate(imageRecords)
+    }
+
     return sendResponse(res, 200, true, "Product updated successfully", null)
   })
 
@@ -183,12 +222,15 @@ class ProductController {
 
     try {
       let imageUrl: string
+      let publicId: string = ""
       if (process.env.UPLOAD_PROVIDER === "cloudinary") {
-        imageUrl = await CloudinaryServices.uploadImageBuffer(file.buffer)
+        const uploadResult = await CloudinaryServices.uploadImageBuffer(file.buffer)
+        imageUrl = uploadResult.imageUrl
+        publicId = uploadResult.publicId
       } else {
         imageUrl = await LocalUploadServices.uploadImageBuffer(file)
       }
-      return sendResponse(res, 200, true, "Image uploaded successfully", { imageUrl })
+      return sendResponse(res, 200, true, "Image uploaded successfully", { imageUrl, publicId })
     } catch (error: any) {
       console.error("Upload error:", error)
       return sendResponse(res, 500, false, error.message || "Failed to upload image", null)
