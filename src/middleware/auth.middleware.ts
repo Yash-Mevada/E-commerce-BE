@@ -51,14 +51,23 @@ function verifyWithKey(token: string, jwk: any): any {
 }
 
 export const authMiddleware = async (req: any, res: any, next: any) => {
-  // Bypass auth for public routes (registration & login)
+  // Check if current route is public (accessible without login)
+  const path = req.path
+  const method = req.method
+
   const publicPaths = [
-    "/api/users/create", 
+    "/api/users/create",
     "/api/users/login",
     "/api/customers/register",
-    "/api/customers/login"
+    "/api/customers/login",
+    "/api/products/all",
+    "/api/categories/all"
   ]
-  if (publicPaths.includes(req.path)) {
+
+  const isPublicProductDetail = method === "GET" && /^\/api\/products\/[^\/]+$/.test(path)
+  const isPublicCategoryDetail = method === "GET" && /^\/api\/categories\/[^\/]+$/.test(path)
+
+  if (publicPaths.includes(path) || isPublicProductDetail || isPublicCategoryDetail) {
     return next()
   }
 
