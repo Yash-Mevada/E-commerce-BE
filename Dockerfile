@@ -7,10 +7,11 @@ FROM node:20-alpine
 WORKDIR /app
 
 #copy package.json and package-lock.json
-COPY pakage*.json ./
+COPY package*.json ./
 
 #install Dependencies 
-RUN npm install ci
+RUN npm ci
+
 
 #copy all files to working directory
 COPY . .
