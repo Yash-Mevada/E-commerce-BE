@@ -1,7 +1,8 @@
 import type { Optional } from "sequelize";
 import { AllowNull, BelongsTo, Column, DataType, Default, ForeignKey, Model, PrimaryKey, Table } from "sequelize-typescript";
-import User from "./user.model.js";
+import UserClass from "./user.model.js";
 
+interface User extends UserClass { }
 
 interface addressAttributes {
   id: string;
@@ -35,7 +36,7 @@ export default class Address extends Model<addressAttributes, addressCreateAttri
   @Column(DataType.UUID)
   id!: string
 
-  @ForeignKey(() => User)
+  @ForeignKey(() => UserClass)
   @Column(DataType.UUID)
   user_id!: string
 
@@ -70,7 +71,7 @@ export default class Address extends Model<addressAttributes, addressCreateAttri
 
 
   // BelongsTo
-  @BelongsTo(() => User)
+  @BelongsTo(() => UserClass)
   user!: User
 
 
