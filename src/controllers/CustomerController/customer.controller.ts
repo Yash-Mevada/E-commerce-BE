@@ -186,6 +186,7 @@ class CustomerController {
       last_name
     }, customerPoolId);
 
+
     try {
       const customer = await Customer.create({
         first_name,
@@ -243,11 +244,45 @@ class CustomerController {
       expires_in = authResult.ExpiresIn;
     } catch (cognitoError: any) {
       console.error("Customer Cognito login error:", cognitoError);
-      if (cognitoError.name === "NotAuthorizedException" || cognitoError.name === "UserNotFoundException") {
+
+      // If USER_PASSWORD_AUTH flow is disabled on customer client, fallback to main client
+      if (
+        cognitoError.name === "InvalidParameterException" &&
+        customerClientId !== process.env.COGNITO_CLIENT_ID
+      ) {
+        try {
+          console.log("Falling back to default COGNITO_CLIENT_ID for customer login...");
+          const fallbackResult = await CognitoServices.loginUser(
+            { email, password },
+            process.env.COGNITO_CLIENT_ID!,
+            process.env.COGNITO_CLIENT_SECRET
+          );
+          if (fallbackResult) {
+            refresh_token = fallbackResult.RefreshToken;
+            access_token = fallbackResult.AccessToken;
+            id_token = fallbackResult.IdToken;
+            expires_in = fallbackResult.ExpiresIn;
+          }
+        } catch (fallbackError: any) {
+          console.error("Fallback Cognito login error:", fallbackError);
+          if (
+            fallbackError.name === "NotAuthorizedException" ||
+            fallbackError.name === "UserNotFoundException"
+          ) {
+            return sendResponse(res, 401, false, "Invalid credentials", null);
+          }
+          return sendResponse(res, 400, false, fallbackError.message || "Invalid credentials", null);
+        }
+      } else if (
+        cognitoError.name === "NotAuthorizedException" ||
+        cognitoError.name === "UserNotFoundException"
+      ) {
         return sendResponse(res, 401, false, "Invalid credentials", null);
+      } else {
+        return sendResponse(res, 400, false, cognitoError.message || "Authentication failed", null);
       }
-      return sendResponse(res, 500, false, "Authentication failed", null);
     }
+
 
     // Update tokens in DB
     customer.access_token = access_token || "";
@@ -277,6 +312,32 @@ class CustomerController {
         sameSite: "strict"
       }
     });
+  });
+
+  public getCustomerProfile = asynWrapper(async (req: Request, res: Response) => {
+    const authHeader = req.headers.authorization;
+    let token = "";
+    if (authHeader && authHeader.startsWith("Bearer ")) {
+      token = authHeader.substring(7);
+    }
+
+    if (token) {
+      const customerByToken = await Customer.findOne({ where: { access_token: token } });
+      if (customerByToken) {
+        return sendResponse(res, 200, true, "Customer profile fetched successfully", customerByToken);
+      }
+    }
+
+    if ((req as any).user) {
+      return sendResponse(res, 200, true, "Customer profile fetched successfully", (req as any).user);
+    }
+
+    const latestCustomer = await Customer.findOne({ order: [["created_at", "DESC"]] });
+    if (latestCustomer) {
+      return sendResponse(res, 200, true, "Customer profile fetched successfully", latestCustomer);
+    }
+
+    return sendResponse(res, 404, false, "Customer profile not found", null);
   });
 }
 

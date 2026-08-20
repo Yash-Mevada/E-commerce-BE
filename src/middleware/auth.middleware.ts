@@ -1,21 +1,34 @@
 import crypto from "crypto"
 import jwt from "jsonwebtoken"
 import Users from "../model/user.model.js"
+import Customer from "../model/customer.model.js"
 
 let jwksCache: any[] = []
 
 async function fetchJwks() {
   if (jwksCache.length > 0) return jwksCache
-  const url = `https://cognito-idp.${process.env.AWS_REGION}.amazonaws.com/${process.env.COGNITO_USER_POOL_ID}/.well-known/jwks.json`
-  try {
-    const response = await fetch(url)
-    const data = await response.json()
-    jwksCache = data.keys || []
-    return jwksCache
-  } catch (error) {
-    console.error("Failed to fetch JWKS from Cognito:", error)
-    return []
+  const region = process.env.AWS_REGION || "us-east-1"
+  const poolIds = [
+    process.env.COGNITO_CUSTOMER_USER_POOL_ID,
+    process.env.COGNITO_USER_POOL_ID
+  ].filter((id, idx, arr) => Boolean(id) && arr.indexOf(id) === idx) as string[]
+
+  let allKeys: any[] = []
+  for (const poolId of poolIds) {
+    try {
+      const url = `https://cognito-idp.${region}.amazonaws.com/${poolId}/.well-known/jwks.json`
+      const response = await fetch(url)
+      const data = await response.json()
+      if (data?.keys) {
+        allKeys = allKeys.concat(data.keys)
+      }
+    } catch (error) {
+      console.error(`Failed to fetch JWKS from Cognito pool ${poolId}:`, error)
+    }
   }
+
+  jwksCache = allKeys
+  return jwksCache
 }
 
 async function verifyCognitoToken(token: string): Promise<any> {
@@ -99,16 +112,27 @@ export const authMiddleware = async (req: any, res: any, next: any) => {
       })
     }
 
-    // Retrieve user by cognito_sub or local ID depending on the token type
+    // Retrieve user or customer by cognito_sub or local ID depending on the token type
     let userData: any
-    if (decordToken.sub) {
+    if (decordToken?.sub) {
       userData = await Users.findOne({
         where: { cognito_sub: decordToken.sub },
         attributes: ["id", "first_name", "last_name", "email", "phone_number", "role", "created_at", "updated_at"],
       })
+      if (!userData) {
+        userData = await Customer.findOne({
+          where: { cognito_sub: decordToken.sub },
+        })
+      }
     } else {
       userData = await Users.findByPk(decordToken?.id, {
         attributes: ["id", "first_name", "last_name", "email", "phone_number", "role", "created_at", "updated_at"],
+      })
+    }
+
+    if (!userData) {
+      userData = await Customer.findOne({
+        where: { access_token: token },
       })
     }
 
