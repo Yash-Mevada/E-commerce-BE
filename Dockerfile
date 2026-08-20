@@ -15,6 +15,7 @@ RUN npm ci
 
 #copy all files to working directory
 COPY . .
+COPY ./migrations ./migrations
 
 # run build command
 RUN npm run build
