@@ -3,8 +3,8 @@ import { AllowNull, BelongsTo, Column, DataType, Default, ForeignKey, HasMany, M
 import UserClass from "./user.model.js";
 import CartItemClass from "./cartItem.model.js";
 
-interface User extends UserClass {}
-interface CartItem extends CartItemClass {}
+interface User extends UserClass { }
+interface CartItem extends CartItemClass { }
 
 interface cardAttributes {
   id: string;
@@ -16,11 +16,11 @@ interface cardAttributes {
 export interface cardCreateAttributes extends Optional<cardAttributes, "id" | "created_at" | "updated_at"> { }
 
 @Table({
-  tableName: "cards",
+  tableName: "carts",
   timestamps: true,
   underscored: true
 })
-export default class Card extends Model<cardAttributes, cardCreateAttributes> {
+export default class Cart extends Model<cardAttributes, cardCreateAttributes> {
 
   @PrimaryKey
   @Default(DataType.UUIDV4)

@@ -13,7 +13,9 @@ import customerRoutes from "./routes/customer.route.js";
 
 import cartRoutes from "./routes/cart.route.js";
 import cartItemRoutes from "./routes/cartItem.router.js";
-import dashboardRoutes from "./routes/dashBoard.route.js"
+import dashboardRoutes from "./routes/dashBoard.route.js";
+import orderRoutes from "./routes/order.route.js";
+import paymentRoutes from "./routes/payment.route.js";
 
 const app = express()
 
@@ -37,6 +39,8 @@ app.use("/api/addresses", addressRoutes);
 app.use("/api/cart", cartRoutes);
 app.use("/api/cartItems", cartItemRoutes);
 app.use("/api/customers", customerRoutes);
+app.use("/api/orders", orderRoutes);
+app.use("/api/payments", paymentRoutes);
 
 // Start express server
 app.listen(process.env.PORT, () => {

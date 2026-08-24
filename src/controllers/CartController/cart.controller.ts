@@ -6,6 +6,8 @@ import type { Request, Response } from "express"
 import { asynWrapper } from "../../utils/asyncWrapper.js"
 import Card from "../../model/card.model.js"
 import UserClass from "../../model/user.model.js"
+import CartItemClass from "../../model/cartItem.model.js"
+import ProductClass from "../../model/product.model.js"
 import { sendResponse } from "../../utils/responseHandler.js"
 
 export interface CartRequest extends Request {
@@ -16,6 +18,8 @@ class CartController {
 
   public createCart = asynWrapper(async (req: any, res: Response) => {
     const user = req?.user
+    console.log("user ------->", user)
+
     if (!user?.id) {
       return sendResponse(res, 401, false, "User is not authenticated", null)
     }
@@ -73,15 +77,23 @@ class CartController {
     if (!user?.id) {
       return sendResponse(res, 401, false, "User is not authenticated", null)
     }
+    const cartInclude = [
+      {
+        model: CartItemClass,
+        include: [ProductClass]
+      }
+    ]
+
     let userId = user.id
     let cart = await Card.findOne({
-      where: { user_id: userId }
+      where: { user_id: userId },
+      include: cartInclude
     })
 
     if (!cart && user.email) {
       const matchedUser = await UserClass.findOne({ where: { email: user.email } })
       if (matchedUser) {
-        cart = await Card.findOne({ where: { user_id: matchedUser.id } })
+        cart = await Card.findOne({ where: { user_id: matchedUser.id }, include: cartInclude })
       }
     }
 
