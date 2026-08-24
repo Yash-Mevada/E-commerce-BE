@@ -75,13 +75,16 @@ class order extends Model {
 
   @ForeignKey(() => Address)
   @Column({
-    type: DataType.STRING,
+    type: DataType.UUID,
     allowNull: false
   })
   declare addressId: string
 
   @BelongsTo(() => User)
   declare user: User
+
+  @BelongsTo(() => Address)
+  declare address: Address
 
   @HasMany(() => orderItems)
   declare items: orderItems
